@@ -13,31 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Restore session cache
-        uses: actions/cache@v4
-        with:
-          path: session.json
-          key: instagram-session-${{ github.run_id }}
-          restore-keys: |
-            instagram-session-
-
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: py -m pip install -r requirements.txt
 
       - name: Run unfollow script
         env:
           INSTAGRAM_USERNAME: ${{ secrets.INSTAGRAM_USERNAME }}
           INSTAGRAM_PASSWORD: ${{ secrets.INSTAGRAM_PASSWORD }}
-        run: python unfollow.py
-
-      - name: Save session cache
-        if: always()
-        uses: actions/cache@v4
-        with:
-          path: session.json
-          key: instagram-session-${{ github.run_id }}
+        run: py unfollow.py
