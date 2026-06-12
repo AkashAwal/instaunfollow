@@ -110,12 +110,17 @@ def main():
     storage = str(SESSION_FILE) if SESSION_FILE.exists() else None
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(
+            headless=False,
+            args=["--disable-blink-features=AutomationControlled"]
+        )
         context = browser.new_context(
             storage_state=storage,
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         )
+        # Hide automation signals so reCAPTCHA renders properly
+        context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         page = context.new_page()
 
         ensure_logged_in(page, context)
