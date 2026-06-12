@@ -16,6 +16,9 @@ jobs:
       - name: Install dependencies
         run: py -m pip install -r requirements.txt
 
+      - name: Install Playwright browser
+        run: py -m playwright install chromium
+
       - name: Run unfollow script
         env:
           INSTAGRAM_USERNAME: ${{ secrets.INSTAGRAM_USERNAME }}

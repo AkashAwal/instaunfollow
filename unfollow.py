@@ -1,86 +1,116 @@
 import os
 import time
 import random
-import json
-from instagrapi import Client
-from instagrapi.exceptions import ClientError, LoginRequired, ChallengeRequired
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 USERNAME = os.environ["INSTAGRAM_USERNAME"]
 PASSWORD = os.environ["INSTAGRAM_PASSWORD"]
-SESSION_FILE = "session.json"
 BATCH_SIZE = 100
-MIN_DELAY = 5
-MAX_DELAY = 15
+MIN_DELAY = 8
+MAX_DELAY = 18
 
 
-def login():
-    cl = Client()
-    cl.delay_range = [1, 3]
+def random_delay():
+    time.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
 
-    if os.path.exists(SESSION_FILE):
+
+def login(page):
+    print("Navigating to Instagram...")
+    page.goto("https://www.instagram.com/accounts/login/")
+    page.wait_for_load_state("networkidle")
+
+    page.fill('input[name="username"]', USERNAME)
+    time.sleep(random.uniform(0.5, 1.5))
+    page.fill('input[name="password"]', PASSWORD)
+    time.sleep(random.uniform(0.5, 1.5))
+    page.click('button[type="submit"]')
+
+    try:
+        page.wait_for_url("**/instagram.com/**", timeout=15000)
+        # Dismiss "Save your login info?" popup if it appears
         try:
-            cl.load_settings(SESSION_FILE)
-            cl.login(USERNAME, PASSWORD)
-            cl.get_timeline_feed()  # verify session is valid
-            print("Resumed existing session.")
-            return cl
-        except (LoginRequired, Exception):
-            print("Session expired, logging in fresh...")
+            page.click('button:has-text("Not Now")', timeout=5000)
+        except PlaywrightTimeout:
+            pass
+        # Dismiss notifications popup if it appears
+        try:
+            page.click('button:has-text("Not Now")', timeout=5000)
+        except PlaywrightTimeout:
+            pass
+        print("Logged in.")
+    except PlaywrightTimeout:
+        page.screenshot(path="login_failed.png")
+        raise Exception("Login timed out — check login_failed.png for what happened")
 
-    cl = Client()
-    cl.delay_range = [1, 3]
-    cl.login(USERNAME, PASSWORD)
-    cl.dump_settings(SESSION_FILE)
-    print("Logged in and session saved.")
-    return cl
+
+def unfollow_batch(page):
+    print(f"Opening following list for @{USERNAME}...")
+    page.goto(f"https://www.instagram.com/{USERNAME}/following/")
+    page.wait_for_load_state("networkidle")
+    time.sleep(3)
+
+    unfollowed = 0
+    seen_usernames = set()
+
+    while unfollowed < BATCH_SIZE:
+        # Find all Following buttons currently visible
+        buttons = page.query_selector_all('button:has-text("Following")')
+
+        if not buttons:
+            print("No more Following buttons found.")
+            break
+
+        # Pick the first button we haven't tried yet
+        clicked = False
+        for btn in buttons:
+            try:
+                label = btn.evaluate("el => el.closest('[role]')?.querySelector('span')?.textContent || ''")
+                if label in seen_usernames:
+                    continue
+
+                btn.scroll_into_view_if_needed()
+                time.sleep(0.5)
+                btn.click()
+
+                # Confirm unfollow in the dialog
+                try:
+                    page.click('button:has-text("Unfollow")', timeout=5000)
+                    unfollowed += 1
+                    print(f"[{unfollowed}/{BATCH_SIZE}] Unfollowed")
+                    seen_usernames.add(label)
+                    clicked = True
+                    random_delay()
+                    break
+                except PlaywrightTimeout:
+                    # Dialog didn't appear, skip
+                    seen_usernames.add(label)
+                    break
+            except Exception as e:
+                print(f"  Skipping button: {e}")
+                continue
+
+        if not clicked:
+            # Scroll down to load more
+            page.evaluate("window.scrollBy(0, 400)")
+            time.sleep(2)
+
+    print(f"\nRun complete. Unfollowed {unfollowed} accounts.")
+    return unfollowed
 
 
 def main():
-    try:
-        cl = login()
-    except ChallengeRequired:
-        print("Instagram is asking for a challenge (e.g. email/SMS verify). Try logging in manually once from a browser first.")
-        raise
-    except Exception as e:
-        print(f"Login failed: {e}")
-        raise
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)  # visible so Instagram trusts it more
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        )
+        page = context.new_page()
 
-    user_id = cl.user_id
-    print("Fetching following list...")
+        login(page)
+        unfollow_batch(page)
 
-    try:
-        following = cl.user_following(user_id, amount=BATCH_SIZE + 20)
-    except Exception as e:
-        print(f"Failed to fetch following list: {e}")
-        raise
-
-    if not following:
-        print("No one left to unfollow! You're done.")
-        return
-
-    batch = list(following.items())[:BATCH_SIZE]
-    print(f"Fetched {len(following)} accounts. Unfollowing {len(batch)} this run...\n")
-
-    unfollowed = 0
-    for i, (uid, user_info) in enumerate(batch):
-        try:
-            cl.user_unfollow(uid)
-            unfollowed += 1
-            print(f"[{unfollowed}/{len(batch)}] Unfollowed @{user_info.username}")
-        except ClientError as e:
-            error_msg = str(e)
-            if "feedback_required" in error_msg or "rate" in error_msg.lower():
-                print(f"Rate limited by Instagram after {unfollowed} unfollows. Stopping early.")
-                break
-            print(f"  Skipping @{user_info.username}: {e}")
-
-        if i < len(batch) - 1:
-            delay = random.uniform(MIN_DELAY, MAX_DELAY)
-            print(f"  Waiting {delay:.1f}s...")
-            time.sleep(delay)
-
-    cl.dump_settings(SESSION_FILE)
-    print(f"\nRun complete. Unfollowed {unfollowed} accounts.")
+        browser.close()
 
 
 if __name__ == "__main__":
