@@ -18,7 +18,21 @@ def login(page):
     print("Navigating to Instagram...")
     page.goto("https://www.instagram.com/accounts/login/")
     page.wait_for_load_state("networkidle")
+    time.sleep(3)
 
+    # Dismiss cookie consent if present
+    for text in ["Allow all cookies", "Accept All", "Allow essential and optional cookies"]:
+        try:
+            page.click(f'button:has-text("{text}")', timeout=3000)
+            time.sleep(1)
+            break
+        except PlaywrightTimeout:
+            pass
+
+    page.screenshot(path="before_login.png")
+    print("Screenshot saved: before_login.png")
+
+    page.wait_for_selector('input[name="username"]', timeout=30000)
     page.fill('input[name="username"]', USERNAME)
     time.sleep(random.uniform(0.5, 1.5))
     page.fill('input[name="password"]', PASSWORD)
