@@ -38,20 +38,10 @@ def ensure_logged_in(page, context):
         except PlaywrightTimeout:
             pass
 
-    # Try auto-filling credentials
-    try:
-        page.wait_for_selector('input[name="username"]', timeout=8000)
-        page.fill('input[name="username"]', USERNAME)
-        time.sleep(random.uniform(0.5, 1.5))
-        page.fill('input[name="password"]', PASSWORD)
-        time.sleep(random.uniform(0.5, 1.5))
-        page.click('button[type="submit"]')
-        print("Credentials submitted. Waiting for login...")
-    except PlaywrightTimeout:
-        print("Login form not auto-detected (CAPTCHA?). Please log in manually in the browser window.")
+    print(">>> Please log in manually in the browser window. Take your time.")
 
-    # Wait indefinitely for user to complete login (handles CAPTCHA)
-    print("Waiting for successful login... (solve any CAPTCHA in the browser)")
+    # Wait indefinitely for user to complete login (handles CAPTCHA, 2FA, etc.)
+    print("Waiting for you to log in...")
     while True:
         url = page.url
         if "/accounts/login/" not in url and "/challenge/" not in url and "instagram.com" in url:
