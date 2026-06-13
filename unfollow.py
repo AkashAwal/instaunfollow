@@ -122,6 +122,13 @@ def main():
         # Hide automation signals so reCAPTCHA renders properly
         context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         page = context.new_page()
+        # Patch automation signals so reCAPTCHA renders properly
+        context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1,2,3]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+            window.chrome = {runtime: {}};
+        """)
 
         ensure_logged_in(page, context)
         unfollow_batch(page)
